@@ -1,28 +1,38 @@
 import time
 import threading
+import os
 import logging
 from http.server import BaseHTTPRequestHandler, HTTPServer
 
 from prometheus_client import Counter, Histogram, generate_latest, CONTENT_TYPE_LATEST
 
-# 🔥 metrics
+os.makedirs("logs", exist_ok=True)
+
+#metrics
 job_counter = Counter('worker_jobs_total', 'Total jobs processed')
 job_duration = Histogram('worker_job_duration_seconds', 'Job processing time')
 
-# 🔥 readiness state
+#readiness state
 is_ready = False
 
-# 🔥 logging (console + file)
+#logging (console + file)
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(message)s",
+    format="%(asctime)s|%(levelname)s|%(message)s",
     handlers=[
-        logging.FileHandler("jobs.log"),
+        logging.FileHandler("logs/jobs.log"),
         logging.StreamHandler()
     ]
 )
 
-# 🔥 worker loop
+#log access
+access_logger = logging.getLogger("access")
+access_logger.setLevel(logging.INFO)
+access_handler = logging.FileHandler("logs/access.log")
+access_handler.setFormatter(logging.Formatter("%(asctime)s|%(message)s"))
+access_logger.addHandler(access_handler)
+
+#worker loop
 def worker_loop():
     global is_ready
 
@@ -35,7 +45,7 @@ def worker_loop():
         start = time.time()
 
         logging.info("Processing job...")
-        time.sleep(2)  # simulate work
+        time.sleep(15)  # simulate work
 
         job_counter.inc()
         job_duration.observe(time.time() - start)
@@ -43,9 +53,12 @@ def worker_loop():
         logging.info("Job processed successfully")
 
 
-# 🔥 HTTP handler
+# HTTP handler
 class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
+        
+        access_logger.info(f"{self.client_address[0]} {self.command} {self.path}")
+        
         if self.path == "/health/live":
             self.send_response(200)
             self.end_headers()
